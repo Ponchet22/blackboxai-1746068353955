@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BlockPuzzle Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+    }
+    .grid-cell {
+      width: 32px;
+      height: 32px;
+      border: 1px solid #d1d5db; /* Tailwind gray-300 */
+      box-sizing: border-box;
+    }
+    .block-cell {
+      background-color: #3b82f6; /* Tailwind blue-500 */
+      border-radius: 4px;
+    }
+    .block-cell.placed {
+      background-color: #2563eb; /* Tailwind blue-700 */
+    }
+    .block-shape {
+      display: inline-block;
+      margin: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .block-shape .grid-cell {
+      border-color: transparent;
+    }
+    .block-shape.selected .grid-cell {
+      background-color: #2563eb;
+      border-radius: 4px;
+    }
+    .block-shape .grid-cell.empty {
+      background-color: transparent;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-4">
+  <h1 class="text-3xl font-bold mb-4 text-gray-800">BlockPuzzle Game</h1>
+  <div class="flex flex-col md:flex-row gap-8">
+    <div>
+      <div id="board" class="grid grid-cols-10 grid-rows-10 gap-0.5 bg-white p-2 rounded shadow-md"></div>
+      <div class="mt-4 flex justify-between items-center">
+        <div class="text-lg font-semibold text-gray-700">Score: <span id="score">0</span></div>
+        <button id="resetBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition">Reset</button>
+      </div>
+    </div>
+    <div>
+      <h2 class="text-xl font-semibold mb-2 text-gray-700">Available Blocks</h2>
+      <div id="blocks" class="flex flex-wrap max-w-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const boardSize = 10;
+    const boardElement = document.getElementById('board');
+    const blocksElement = document.getElementById('blocks');
+    const scoreElement = document.getElementById('score');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // Board state: 2D array to track placed cells
+    let board = [];
+    // Current score
+    let score = 0;
+    // Currently selected block shape
+    let selectedBlock = null;
+
+    // Define block shapes as arrays of [row, col] relative positions
+    const blockShapes = [
+      { id: 1, shape: [[0,0]], name: 'Single' },
+      { id: 2, shape: [[0,0],[0,1]], name: 'Double Horizontal' },
+      { id: 3, shape: [[0,0],[1,0]], name: 'Double Vertical' },
+      { id: 4, shape: [[0,0],[0,1],[1,0],[1,1]], name: 'Square' },
+      { id: 5, shape: [[0,0],[1,0],[2,0]], name: 'Triple Vertical' },
+      { id: 6, shape: [[0,0],[0,1],[0,2]], name: 'Triple Horizontal' },
+      { id: 7, shape: [[0,0],[1,0],[1,1]], name: 'L Shape' },
+      { id: 8, shape: [[0,0],[0,1],[1,1]], name: 'Reverse L' },
+      { id: 9, shape: [[0,0],[1,0],[1,-1]], name: 'L Shape Left' },
+      { id: 10, shape: [[0,0],[0,1],[-1,1]], name: 'Reverse L Up' }
+    ];
+
+    // Initialize board state
+    function initBoard() {
+      board = [];
+      for(let r=0; r<boardSize; r++) {
+        const row = [];
+        for(let c=0; c<boardSize; c++) {
+          row.push(false);
+        }
+        board.push(row);
+      }
+    }
+
+    // Render the board grid
+    function renderBoard() {
+      boardElement.innerHTML = '';
+      for(let r=0; r<boardSize; r++) {
+        for(let c=0; c<boardSize; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'grid-cell';
+          if(board[r][c]) {
+            cell.classList.add('block-cell', 'placed');
+          }
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          cell.addEventListener('click', () => {
+            if(selectedBlock) {
+              placeBlock(r, c);
+            }
+          });
+          boardElement.appendChild(cell);
+        }
+      }
+    }
+
+    // Render available blocks
+    function renderBlocks() {
+      blocksElement.innerHTML = '';
+      blockShapes.forEach(block => {
+        const blockDiv = document.createElement('div');
+        blockDiv.className = 'block-shape';
+        blockDiv.title = block.name;
+        blockDiv.dataset.id = block.id;
+
+        // Create grid for block shape (3x3 max)
+        const maxSize = 3;
+        const blockGrid = document.createElement('div');
+        blockGrid.className = 'grid grid-cols-3 grid-rows-3 gap-0.5';
+
+        for(let r=0; r<maxSize; r++) {
+          for(let c=0; c<maxSize; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell empty';
+            // Check if this cell is part of the shape
+            if(block.shape.some(pos => pos[0] === r && pos[1] === c)) {
+              cell.classList.remove('empty');
+              cell.classList.add('block-cell');
+            }
+            blockGrid.appendChild(cell);
+          }
+        }
+
+        blockDiv.appendChild(blockGrid);
+
+        blockDiv.addEventListener('click', () => {
+          if(selectedBlock && selectedBlock.id === block.id) {
+            selectedBlock = null;
+            blockDiv.classList.remove('selected');
+          } else {
+            selectedBlock = block;
+            // Remove selected class from all blocks
+            document.querySelectorAll('.block-shape').forEach(el => el.classList.remove('selected'));
+            blockDiv.classList.add('selected');
+          }
+        });
+
+        blocksElement.appendChild(blockDiv);
+      });
+    }
+
+    // Check if block can be placed at board position (row, col)
+    function canPlaceBlock(row, col) {
+      for(const pos of selectedBlock.shape) {
+        const r = row + pos[0];
+        const c = col + pos[1];
+        if(r < 0 || r >= boardSize || c < 0 || c >= boardSize) return false;
+        if(board[r][c]) return false;
+      }
+      return true;
+    }
+
+    // Place block on board and update state
+    function placeBlock(row, col) {
+      if(!canPlaceBlock(row, col)) return;
+
+      for(const pos of selectedBlock.shape) {
+        const r = row + pos[0];
+        const c = col + pos[1];
+        board[r][c] = true;
+      }
+
+      // Clear full rows and columns
+      clearFullLines();
+
+      // Update score
+      score += selectedBlock.shape.length;
+      scoreElement.textContent = score;
+
+      // Remove placed block from available blocks
+      removeBlock(selectedBlock.id);
+
+      // Deselect block
+      selectedBlock = null;
+      document.querySelectorAll('.block-shape').forEach(el => el.classList.remove('selected'));
+
+      renderBoard();
+      renderBlocks();
+    }
+
+    // Remove block from available blocks by id
+    function removeBlock(id) {
+      const index = blockShapes.findIndex(b => b.id === id);
+      if(index !== -1) {
+        blockShapes.splice(index, 1);
+      }
+    }
+
+    // Check and clear full rows and columns
+    function clearFullLines() {
+      let rowsToClear = [];
+      let colsToClear = [];
+
+      for(let r=0; r<boardSize; r++) {
+        if(board[r].every(cell => cell)) {
+          rowsToClear.push(r);
+        }
+      }
+
+      for(let c=0; c<boardSize; c++) {
+        let fullCol = true;
+        for(let r=0; r<boardSize; r++) {
+          if(!board[r][c]) {
+            fullCol = false;
+            break;
+          }
+        }
+        if(fullCol) colsToClear.push(c);
+      }
+
+      // Clear rows
+      rowsToClear.forEach(r => {
+        for(let c=0; c<boardSize; c++) {
+          board[r][c] = false;
+        }
+      });
+
+      // Clear columns
+      colsToClear.forEach(c => {
+        for(let r=0; r<boardSize; r++) {
+          board[r][c] = false;
+        }
+      });
+
+      // Update score for cleared lines
+      const linesCleared = rowsToClear.length + colsToClear.length;
+      if(linesCleared > 0) {
+        score += linesCleared * 10;
+        scoreElement.textContent = score;
+      }
+    }
+
+    // Reset game
+    function resetGame() {
+      initBoard();
+      score = 0;
+      scoreElement.textContent = score;
+      // Reset blocks
+      blockShapes.length = 0;
+      blockShapes.push(
+        { id: 1, shape: [[0,0]], name: 'Single' },
+        { id: 2, shape: [[0,0],[0,1]], name: 'Double Horizontal' },
+        { id: 3, shape: [[0,0],[1,0]], name: 'Double Vertical' },
+        { id: 4, shape: [[0,0],[0,1],[1,0],[1,1]], name: 'Square' },
+        { id: 5, shape: [[0,0],[1,0],[2,0]], name: 'Triple Vertical' },
+        { id: 6, shape: [[0,0],[0,1],[0,2]], name: 'Triple Horizontal' },
+        { id: 7, shape: [[0,0],[1,0],[1,1]], name: 'L Shape' },
+        { id: 8, shape: [[0,0],[0,1],[1,1]], name: 'Reverse L' },
+        { id: 9, shape: [[0,0],[1,0],[1,-1]], name: 'L Shape Left' },
+        { id: 10, shape: [[0,0],[0,1],[-1,1]], name: 'Reverse L Up' }
+      );
+      selectedBlock = null;
+      renderBoard();
+      renderBlocks();
+    }
+
+    resetBtn.addEventListener('click', resetGame);
+
+    // Initialize game
+    resetGame();
+  </script>
+</body>
+</html>
